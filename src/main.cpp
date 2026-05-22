@@ -15,7 +15,7 @@ const int PWM_RES     = 10;
 const int PWM_MAX     = 1023;
 
 // Ajustes de control
-const float MAX_RPM_SETPOINT = 2000.0f;
+const float MAX_RPM_SETPOINT = 1200.0f;
 
 // PWM de arranque y mínimo útil
 const int PWM_START = 100;      // Ajustar en banco
@@ -26,13 +26,16 @@ const unsigned long START_TIME_MS = 250;
 volatile unsigned long lastPulseMicros = 0;
 volatile unsigned long pulseInterval = 0;
 float rpmActual = 0;
+float rpmInstant = 0;
 float rpmTarget = 0;
+float rpmDisplay = 0;
+unsigned long lastInterval = 0;
 
 // Variables PID
 unsigned long lastUpdate = 0;
 float Kp = 0.80f;
 float Ki = 1.00f;
-float Kd = 0.08;
+float Kd = 0.00;
 float integral = 0, lastError = 0;
 
 // Estado de arranque
@@ -57,11 +60,12 @@ void setup() {
 
     auto cfg = M5.config();
     M5.begin(cfg);
+    Serial.begin(115200);
 
     pinMode(BTN_UP, INPUT_PULLUP);
     pinMode(BTN_DOWN, INPUT_PULLUP);
     pinMode(PIN_HALL, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(PIN_HALL), handlePulse, RISING);
+    attachInterrupt(digitalPinToInterrupt(PIN_HALL), handlePulse, CHANGE);
 
     ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RES);
     ledcAttachPin(PIN_DRV_IN1, PWM_CHANNEL);
@@ -117,14 +121,22 @@ void loop() {
 
         noInterrupts();
         unsigned long interval = pulseInterval;
+        unsigned long lastPulse = lastPulseMicros;
         unsigned long timeSinceLastPulse = micros() - lastPulseMicros;
         interrupts();
 
+        interval *= 2; // Convertir a tiempo entre vueltas (2 pulsos por vuelta)
         if (timeSinceLastPulse > 1000000) {
             rpmActual = 0;
+            rpmInstant = 0;
         } else if (interval > 0) {
-            rpmActual = 60000000.0f / interval;
+            rpmInstant = 60000000.0f / interval;
         }
+        rpmActual= rpmActual * 0.5f + rpmInstant * 0.5f; // Filtro simple para suavizar lectura
+
+        //Serial.print(interval);
+        //Serial.print(", ");
+        //Serial.println(lastInterval);
 
         int pwmOutput = 0;
 
@@ -165,9 +177,10 @@ void loop() {
         M5.Display.setCursor(10, 15);
         M5.Display.printf("TARGET: %.0f   ", rpmTarget);
 
+        rpmDisplay = rpmActual*0.2f + rpmDisplay*0.8f; // Mostrar valor suavizado
         M5.Display.setCursor(10, 45);
         M5.Display.setTextColor(YELLOW, BLACK);
-        M5.Display.printf("REAL: %.1f    ", rpmActual);
+        M5.Display.printf("REAL: %.0f    ", rpmDisplay);
 
         M5.Display.setCursor(10, 75);
         M5.Display.setTextColor(CYAN, BLACK);
