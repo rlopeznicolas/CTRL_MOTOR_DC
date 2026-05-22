@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <M5Unified.h>
+#include "pulse_meter.h"
 
 // Pines de Hardware
 const int PIN_DRV_IN1 = 26;
@@ -42,15 +43,10 @@ float integral = 0, lastError = 0;
 bool motorRunning = false;
 unsigned long startBoostStart = 0;
 
-// Interrupción: medir tiempo entre flancos de subida
-void IRAM_ATTR handlePulse() {
-    unsigned long now = micros();
-    unsigned long diff = now - lastPulseMicros;
-    if (diff > 5000) {
-        pulseInterval = diff;
-        lastPulseMicros = now;
-    }
-}
+PulseMeterChannel canal1 = {portMUX_INITIALIZER_UNLOCKED, ESPERA_SUBIDA, 0, 0, 0, 0, 0, 0, PIN_HALL, 1000, 0, 0, 0, 0};
+
+// Tarea que se ejecuta en core 0
+void tareaFrecuencia(void *pvParameters);
 
 void setup() {
     pinMode(PIN_DRV_IN1, OUTPUT);
@@ -65,11 +61,21 @@ void setup() {
     pinMode(BTN_UP, INPUT_PULLUP);
     pinMode(BTN_DOWN, INPUT_PULLUP);
     pinMode(PIN_HALL, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(PIN_HALL), handlePulse, CHANGE);
 
     ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RES);
     ledcAttachPin(PIN_DRV_IN1, PWM_CHANNEL);
     ledcWrite(PWM_CHANNEL, 0);
+
+    iniMaquinaFrecuencia(&canal1, PIN_HALL, 100); // Inicializar el canal 1
+    xTaskCreatePinnedToCore(
+      tareaFrecuencia,      // Función de la tarea
+      "TareaFrecuencia",    // Nombre de la tarea
+      2048,                 // Stack size
+      NULL,                 // Parámetro
+      1,                    // Prioridad
+      NULL,                 // Handle
+      0                     // Core 0
+    );
 
     M5.Display.setRotation(3);
     M5.Display.fillScreen(BLACK);
@@ -119,13 +125,21 @@ void loop() {
     if (currentMillis - lastUpdate >= 100) {
         lastUpdate = currentMillis;
 
-        noInterrupts();
-        unsigned long interval = pulseInterval;
+        unsigned long interval = 0;
         unsigned long lastPulse = lastPulseMicros;
         unsigned long timeSinceLastPulse = micros() - lastPulseMicros;
-        interrupts();
+        // --- CANAL 1 ---
+        portENTER_CRITICAL(&(canal1.mux));
+        if (canal1.flagNewData) {
+            canal1.flagNewData = 0;
 
-        interval *= 2; // Convertir a tiempo entre vueltas (2 pulsos por vuelta)
+            if (canal1.deltaFlancoMs != 0) {
+            interval = canal1.deltaFlancoMs;
+            lastPulseMicros = micros();
+            }
+        }
+        portEXIT_CRITICAL(&(canal1.mux));
+
         if (timeSinceLastPulse > 1000000) {
             rpmActual = 0;
             rpmInstant = 0;
@@ -134,9 +148,9 @@ void loop() {
         }
         rpmActual= rpmActual * 0.5f + rpmInstant * 0.5f; // Filtro simple para suavizar lectura
 
-        //Serial.print(interval);
-        //Serial.print(", ");
-        //Serial.println(lastInterval);
+        Serial.print(interval);
+        Serial.print(", ");
+        Serial.println(lastInterval);
 
         int pwmOutput = 0;
 
@@ -187,4 +201,11 @@ void loop() {
         float pwmPercent = (pwmOutput / (float)PWM_MAX) * 100.0f;
         M5.Display.printf("PWM: %.1f%%   ", pwmPercent);
     }
+}
+
+void tareaFrecuencia(void *pvParameters) {
+  while (1) {
+    maquinaFrecuenciaPolling(&canal1); // Polling del canal 1
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
 }
