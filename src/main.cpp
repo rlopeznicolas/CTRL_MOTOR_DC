@@ -1,6 +1,14 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 
+// Versión de firmware
+constexpr const char* FIRMWARE_VERSION = "v1.0.2";
+
+// Flag para mostrar versión de firmware
+bool showFirmwareVersion = false;
+unsigned long showFWTime = 0;
+const unsigned long SHOW_FW_DURATION_MS = 3000; // Duración para mostrar la versión de firmware (en ms)
+
 // Pines de Hardware
 const int PIN_DRV_IN1 = 26;
 const int PIN_DRV_IN2 = 0;
@@ -25,6 +33,7 @@ const unsigned long START_TIME_MS = 250;
 // Variables de medición
 volatile unsigned long lastPulseMicros = 0;
 volatile unsigned long pulseInterval = 0;
+volatile unsigned long diff1 = 0;
 float rpmActual = 0;
 float rpmInstant = 0;
 float rpmTarget = 0;
@@ -47,7 +56,12 @@ void IRAM_ATTR handlePulse() {
     unsigned long now = micros();
     unsigned long diff = now - lastPulseMicros;
     if (diff > 5000) {
-        pulseInterval = diff;
+        if(diff1 == 0) {
+            diff1 = diff;
+        } else {
+            pulseInterval = diff1 + diff;
+            diff1 = 0;
+        }
         lastPulseMicros = now;
     }
 }
@@ -115,6 +129,11 @@ void loop() {
         btnActive = false;
     }
 
+    if (M5.BtnA.isPressed()) {
+        showFirmwareVersion = true;
+        showFWTime = millis();
+    }   
+
     unsigned long currentMillis = millis();
     if (currentMillis - lastUpdate >= 100) {
         lastUpdate = currentMillis;
@@ -125,14 +144,13 @@ void loop() {
         unsigned long timeSinceLastPulse = micros() - lastPulseMicros;
         interrupts();
 
-        interval *= 2; // Convertir a tiempo entre vueltas (2 pulsos por vuelta)
         if (timeSinceLastPulse > 1000000) {
             rpmActual = 0;
             rpmInstant = 0;
         } else if (interval > 0) {
             rpmInstant = 60000000.0f / interval;
         }
-        rpmActual= rpmActual * 0.5f + rpmInstant * 0.5f; // Filtro simple para suavizar lectura
+        rpmActual= rpmActual * 0.2f + rpmInstant * 0.8f; // Filtro simple para suavizar lectura
 
         //Serial.print(interval);
         //Serial.print(", ");
@@ -177,7 +195,7 @@ void loop() {
         M5.Display.setCursor(10, 15);
         M5.Display.printf("TARGET: %.0f   ", rpmTarget);
 
-        rpmDisplay = rpmActual*0.2f + rpmDisplay*0.8f; // Mostrar valor suavizado
+        rpmDisplay = rpmActual*0.8f + rpmDisplay*0.2f; // Mostrar valor suavizado
         M5.Display.setCursor(10, 45);
         M5.Display.setTextColor(YELLOW, BLACK);
         M5.Display.printf("REAL: %.0f    ", rpmDisplay);
@@ -186,5 +204,17 @@ void loop() {
         M5.Display.setTextColor(CYAN, BLACK);
         float pwmPercent = (pwmOutput / (float)PWM_MAX) * 100.0f;
         M5.Display.printf("PWM: %.1f%%   ", pwmPercent);
+
+        if (showFirmwareVersion) {
+            //Mostrar versión de firmware
+            M5.Display.setCursor(10, 105);
+            M5.Display.setTextColor(DARKGREY, BLACK);
+            M5.Display.printf("Firmware: %s", FIRMWARE_VERSION);
+            if (millis() - showFWTime > SHOW_FW_DURATION_MS) {
+                showFirmwareVersion = false;
+                M5.Display.setCursor(10, 105);
+                M5.Display.printf("                 ");
+            }
+        }
     }
 }
