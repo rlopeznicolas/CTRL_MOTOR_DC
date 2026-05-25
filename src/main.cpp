@@ -2,6 +2,14 @@
 #include <M5Unified.h>
 #include "pulse_meter.h"
 
+// Versión de firmware
+constexpr const char* FIRMWARE_VERSION = "v1.0.2";
+
+// Flag para mostrar versión de firmware
+bool showFirmwareVersion = false;
+unsigned long showFWTime = 0;
+const unsigned long SHOW_FW_DURATION_MS = 3000; // Duración para mostrar la versión de firmware (en ms)
+
 // Pines de Hardware
 const int PIN_DRV_IN1 = 26;
 const int PIN_DRV_IN2 = 0;
@@ -200,6 +208,19 @@ void loop() {
         M5.Display.setTextColor(CYAN, BLACK);
         float pwmPercent = (pwmOutput / (float)PWM_MAX) * 100.0f;
         M5.Display.printf("PWM: %.1f%%   ", pwmPercent);
+        
+        if (showFirmwareVersion) {
+            //Mostrar versión de firmware
+            M5.Display.setCursor(10, 105);
+            M5.Display.setTextColor(DARKGREY, BLACK);
+            M5.Display.printf("Firmware: %s", FIRMWARE_VERSION);
+            if (millis() - showFWTime > SHOW_FW_DURATION_MS) {
+                showFirmwareVersion = false;
+                M5.Display.setCursor(10, 105);
+                M5.Display.printf("                 ");
+            }
+        }
+
     }
 }
 
