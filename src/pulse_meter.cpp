@@ -29,7 +29,7 @@ void maquinaFrecuenciaPolling(PulseMeterChannel *ch) {
         case ESPERA_SUBIDA:
             if (valorPin == HIGH) {
                 ch->tiempoCambio = micros();
-                unsigned long tiempoActualMs = micros();
+                unsigned long tiempoActualMs = millis();
                 portENTER_CRITICAL(&(ch->mux));
                 ch->deltaFlancoMs = tiempoActualMs - ch->tiempoUltimoFlanco;
                 portEXIT_CRITICAL(&(ch->mux));

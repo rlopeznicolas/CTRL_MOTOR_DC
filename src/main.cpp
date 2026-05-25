@@ -144,7 +144,7 @@ void loop() {
             rpmActual = 0;
             rpmInstant = 0;
         } else if (interval > 0) {
-            rpmInstant = 60000000.0f / interval;
+            rpmInstant = 60000.0f / interval;
         }
         rpmActual= rpmActual * 0.5f + rpmInstant * 0.5f; // Filtro simple para suavizar lectura
 
